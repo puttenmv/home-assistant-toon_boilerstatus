@@ -20,7 +20,7 @@ sensor:
 """
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import Final
 
 import aiohttp
@@ -46,20 +46,20 @@ from homeassistant.const import (
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import Throttle
 
-BASE_URL = "http://{0}:{1}/boilerstatus/boilervalues.txt"
+BASE_URL = 'http://{host}:{port}'
 _LOGGER = logging.getLogger(__name__)
 
-MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=10)
+MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=60)
 DEFAULT_NAME = "Toon "
 
 SENSOR_LIST = {
-    "boilersetpoint",
-    "boilerintemp",
-    "boilerouttemp",
-    "boilerpressure",
-    "boilermodulationlevel",
-    "roomtemp",
-    "roomtempsetpoint",
+    "boilersetpoint"        : "currentSetPoint",
+    "boilerintemp"          : "thermstat_boilerRetTemp",
+    "boilerouttemp"         : "thermstat_boilerTemp",
+    "boilerpressure"        : "thermstat_ChPressure",
+    "boilermodulationlevel" : "currentModulationLevel",
+    "roomtemp"              : "currentTemp",
+    "roomtempsetpoint"      : "currentSetpoint",
 }
 
 SENSOR_TYPES: Final[tuple[SensorEntityDescription, ...]] = (
@@ -127,7 +127,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Required(CONF_HOST): cv.string,
         vol.Optional(CONF_PORT, default=80): cv.positive_int,
         vol.Required(CONF_RESOURCES, default=list(SENSOR_LIST)): vol.All(
-            cv.ensure_list, [vol.In(SENSOR_LIST)]
+            cv.ensure_list, [vol.In(list(SENSOR_LIST))]
         ),
     }
 )
@@ -158,20 +158,39 @@ class ToonBoilerStatusData:
         """Initialize the data object."""
 
         self._session = session
-        self._url = BASE_URL.format(host, port)
+        self._url = ''
+        self._url_happ = BASE_URL.format(host = host, port = port) + "/happ_thermstat?action=getThermostatInfo"
+        self._url_rrd = BASE_URL.format(host = host, port = port) + \
+        '/hcb_rrd?action=getRrdData&loggerName="{loggerName}"&"rra=30days"&readableTime=0&nullForNaN=1&from={timeStamp}'
         self.data = None
-
+        
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     async def async_update(self):
         """Download and update data from Toon."""
 
         try:
             async with async_timeout.timeout(5):
+                self._url = self._url_happ
                 response = await self._session.get(
                     self._url, headers={"Accept-Encoding": "identity"}
                 )
             self.data = await response.json(content_type="text/plain")
-            _LOGGER.debug("Data received from Toon: %s", self.data)
+            _LOGGER.debug("Data received from Toon (happ): %s", self.data)
+            timeStamp = int(datetime.now().replace(second=0,microsecond=0).timestamp()) - 60
+            for sensorName in SENSOR_LIST:
+                loggerName = SENSOR_LIST[sensorName]
+                if "thermstat" not in loggerName:
+                    pass 
+                async with async_timeout.timeout(5):
+                    self.url = self._url_rrd.format(loggerName = loggerName, timeStamp = timeStamp)
+                    response = await self._session.get(
+                        self._url, headers={"Accept-Encoding": "identity"}
+                    )
+                data = await response.json(content_type="text/plain")
+                _LOGGER.debug("Data received from Toon (rrd): %s", data)
+                sampleTimeStr = sorted(data.keys())[-1]
+                self.data[loggerName] = data[sampleTimeStr]
+                self.data['sampleTime'] = int(sampleTimeStr)
         except aiohttp.ClientError:
             _LOGGER.error("Cannot connect to Toon using url '%s'", self._url)
         except asyncio.TimeoutError:
@@ -180,7 +199,7 @@ class ToonBoilerStatusData:
                 self._url
             )
         except (TypeError, KeyError) as err:
-            _LOGGER.error(f"Cannot parse data received from Toon: %s", err)
+            _LOGGER.error("Cannot parse data received from Toon: %s", err)
 
 
 class ToonBoilerStatusSensor(SensorEntity):
@@ -226,39 +245,11 @@ class ToonBoilerStatusSensor(SensorEntity):
         if boiler:
             if "sampleTime" in boiler and boiler["sampleTime"] is not None:
                 self._last_updated = boiler["sampleTime"]
-
-            if self._type == "boilersetpoint":
-                if "boilerSetpoint" in boiler and boiler["boilerSetpoint"] is not None:
-                    self._state = float(boiler["boilerSetpoint"])
-
-            elif self._type == "boilerintemp":
-                if "boilerInTemp" in boiler and boiler["boilerInTemp"] is not None:
-                    self._state = float(boiler["boilerInTemp"])
-
-            elif self._type == "boilerouttemp":
-                if "boilerOutTemp" in boiler and boiler["boilerOutTemp"] is not None:
-                    self._state = float(boiler["boilerOutTemp"])
-
-            elif self._type == "boilerpressure":
-                if "boilerPressure" in boiler and boiler["boilerPressure"] is not None:
-                    self._state = float(boiler["boilerPressure"])
-
-            elif self._type == "boilermodulationlevel":
-                if (
-                    "boilerModulationLevel" in boiler
-                    and boiler["boilerModulationLevel"] is not None
-                ):
-                    self._state = float(boiler["boilerModulationLevel"])
-
-            elif self._type == "roomtemp":
-                if "roomTemp" in boiler and boiler["roomTemp"] is not None:
-                    self._state = float(boiler["roomTemp"])
-
-            elif self._type == "roomtempsetpoint":
-                if (
-                    "roomTempSetpoint" in boiler
-                    and boiler["roomTempSetpoint"] is not None
-                ):
-                    self._state = float(boiler["roomTempSetpoint"])
-
+            for type in SENSOR_LIST:
+                if self._type == type:
+                    if SENSOR_LIST[type] in boiler and boiler[SENSOR_LIST[type]] is not None:
+                        if (self._type == "roomtemp" or self._type == "roomtempsetpoint"):
+                            self._state = float(boiler[SENSOR_LIST[type]])/100
+                        else: 
+                            self._state = float(boiler[SENSOR_LIST[type]])
             _LOGGER.debug("Device: %s State: %s", self._type, self._state)
