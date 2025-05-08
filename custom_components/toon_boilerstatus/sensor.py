@@ -161,7 +161,7 @@ class ToonBoilerStatusData:
         self._url = ''
         self._url_happ = BASE_URL.format(host = host, port = port) + "/happ_thermstat?action=getThermostatInfo"
         self._url_rrd = BASE_URL.format(host = host, port = port) + \
-        '/hcb_rrd?action=getRrdData&loggerName="{loggerName}"&"rra=30days"&readableTime=0&nullForNaN=1&from={timeStamp}'
+        "/hcb_rrd?action=getRrdData&loggerName={loggerName}&rra=30days&readableTime=0&nullForNaN=1&from={timeStamp}"
         self.data = None
         
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
@@ -174,23 +174,22 @@ class ToonBoilerStatusData:
                 response = await self._session.get(
                     self._url, headers={"Accept-Encoding": "identity"}
                 )
-            self.data = await response.json(content_type="text/plain")
+            self.data = await response.json(content_type="text/javascript")
             _LOGGER.debug("Data received from Toon (happ): %s", self.data)
             timeStamp = int(datetime.now().replace(second=0,microsecond=0).timestamp()) - 60
             for sensorName in SENSOR_LIST:
                 loggerName = SENSOR_LIST[sensorName]
-                if "thermstat" not in loggerName:
-                    pass 
-                async with async_timeout.timeout(5):
-                    self.url = self._url_rrd.format(loggerName = loggerName, timeStamp = timeStamp)
-                    response = await self._session.get(
-                        self._url, headers={"Accept-Encoding": "identity"}
-                    )
-                data = await response.json(content_type="text/plain")
-                _LOGGER.debug("Data received from Toon (rrd): %s", data)
-                sampleTimeStr = sorted(data.keys())[-1]
-                self.data[loggerName] = data[sampleTimeStr]
-                self.data['sampleTime'] = int(sampleTimeStr)
+                if "thermstat" in loggerName:
+                    async with async_timeout.timeout(5):
+                        self._url = self._url_rrd.format(loggerName = loggerName, timeStamp = timeStamp)
+                        response = await self._session.get(
+                            self._url, headers={"Accept-Encoding": "identity"}
+                        )
+                    data = await response.json(content_type="text/javascript")
+                    _LOGGER.debug("Data received from Toon (rrd): %s", data)
+                    sampleTimeStr = sorted(data.keys())[-1]
+                    self.data[loggerName] = data[sampleTimeStr]
+                    self.data['sampleTime'] = int(sampleTimeStr)
         except aiohttp.ClientError:
             _LOGGER.error("Cannot connect to Toon using url '%s'", self._url)
         except asyncio.TimeoutError:
