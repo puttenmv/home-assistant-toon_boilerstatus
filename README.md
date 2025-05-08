@@ -9,18 +9,10 @@ Toon thermostats are available in The Netherlands and Belgium.
 More information about rooting your Toon can be found here:
 [Eneco Toon as Domotica controller](http://www.domoticaforum.eu/viewforum.php?f=87)
 
-You also need to install ToonStore and the BoilerStatus app, you can find information on how to install these on forum mentioned above.
+This fork is modified so that you do not need to install ToonStore and the BoilerStatus app, which helps if you have a first generation Toon with memory constraints.
 
 ## Installation
 
-### HACS - Recommended
-- Have [HACS](https://hacs.xyz) installed, this will allow you to easily manage and track updates.
-- Search for 'Toon Boiler Status'.
-- Click Install below the found integration.
-- Configure using the configuration instructions below.
-- Restart Home-Assistant.
-
-### Manual
 - Copy directory `custom_components/toon_boilerstatus` to your `<config dir>/custom_components` directory.
 - Configure with config below.
 - Restart Home-Assistant.
