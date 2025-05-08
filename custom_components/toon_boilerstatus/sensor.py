@@ -56,7 +56,7 @@ SENSOR_LIST = {
     "boilersetpoint"        : "currentInternalBoilerSetpoint",
     "boilerintemp"          : "thermstat_boilerRetTemp",
     "boilerouttemp"         : "thermstat_boilerTemp",
-    "boilerpressure"        : "thermstat_ChPressure",
+    "boilerpressure"        : "thermstat_boilerChPressure",
     "boilermodulationlevel" : "currentModulationLevel",
     "roomtemp"              : "currentTemp",
     "roomtempsetpoint"      : "currentSetpoint",
