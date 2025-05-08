@@ -53,7 +53,7 @@ MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=60)
 DEFAULT_NAME = "Toon "
 
 SENSOR_LIST = {
-    "boilersetpoint"        : "currentSetPoint",
+    "boilersetpoint"        : "currentInternalBoilerSetpoint",
     "boilerintemp"          : "thermstat_boilerRetTemp",
     "boilerouttemp"         : "thermstat_boilerTemp",
     "boilerpressure"        : "thermstat_ChPressure",
